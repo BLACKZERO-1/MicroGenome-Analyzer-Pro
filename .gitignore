@@ -8,3 +8,6 @@ dist/
 *.html
 *.pdf
 *.xlsx
+dist/
+build/
+*.spec

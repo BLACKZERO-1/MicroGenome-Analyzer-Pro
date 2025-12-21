@@ -1,0 +1,10 @@
+# .gitignore
+.venv/
+__pycache__/
+*.pyc
+*.spec
+build/
+dist/
+*.html
+*.pdf
+*.xlsx

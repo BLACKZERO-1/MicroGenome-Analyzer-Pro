@@ -1,95 +1,91 @@
-import time
-import random
 import os
+import subprocess
 from PySide6.QtCore import QThread, Signal
 
 class SpecializedWorker(QThread):
     log_signal = Signal(str)
     progress_signal = Signal(int)
-    step_signal = Signal(int)         # Flowchart tracker
-    input_stats_signal = Signal(dict) # File info
-    result_signal = Signal(dict)      # Hits found
+    step_signal = Signal(int)
+    result_signal = Signal(dict)
     finished_signal = Signal(bool, str)
 
-    def __init__(self, input_file, db_type="card"):
+    def __init__(self, input_file, db_type):
         super().__init__()
-        self.input_file = input_file
-        self.db_type = db_type # "card" or "vfdb"
+        self.input_file = input_file.replace("📄 ", "").strip()
+        self.db_type = db_type.lower() # "card" or "vfdb"
+        
+        base = os.getcwd()
+        self.blast_path = os.path.join(base, "tools", "blast", "blastn.exe")
+        
+        # Select Database Path
+        if "card" in self.db_type:
+            self.db_path = os.path.join(base, "databases", "amr", "card_db")
+        else:
+            self.db_path = os.path.join(base, "databases", "virulence", "vfdb_db")
+            
+        self.output_dir = os.path.join(base, "results", "specialized")
+        os.makedirs(self.output_dir, exist_ok=True)
 
     def run(self):
-        db_name = "CARD (Antibiotic Resistance)" if self.db_type == "card" else "VFDB (Virulence Factors)"
-        
-        # STEP 0: INITIALIZE
-        self.step_signal.emit(0)
-        self.log_signal.emit(f"🚀 Initializing {db_name} Scan...")
+        self.log_signal.emit(f"🚀 Initializing {self.db_type.upper()} Screening...")
         self.progress_signal.emit(5)
-        time.sleep(0.5)
+        self.step_signal.emit(0)
 
-        # --- PHASE 1: INPUT CHECK ---
-        self.log_signal.emit("🔍 Analyzing input genome sequence...")
-        try:
-            with open(self.input_file, 'r') as f:
-                content = f.read()
-            
-            # Simple size check
-            raw = "".join([line.strip() for line in content.splitlines() if not line.startswith(">")])
-            size_mb = len(raw) / 1_000_000
-            
-            self.input_stats_signal.emit({
-                "name": os.path.basename(self.input_file),
-                "size": f"{size_mb:.2f} MB"
-            })
-            self.log_signal.emit(f"✅ Genome Size: {size_mb:.2f} MB. Ready for screening.")
-            self.progress_signal.emit(15)
-
-        except Exception as e:
-            self.finished_signal.emit(False, str(e))
+        # 1. CHECK TOOLS
+        if not os.path.exists(self.blast_path):
+            self.log_signal.emit("❌ CRITICAL: 'blastn.exe' not found.")
+            self.finished_signal.emit(False, "Tool Missing")
             return
 
-        # --- PHASE 2: PIPELINE SIMULATION ---
-        
-        # Step 1: Load Database
-        self.step_signal.emit(1)
-        self.log_signal.emit(f"📂 Loading {self.db_type.upper()} reference database into memory...")
-        time.sleep(1.5)
-        self.progress_signal.emit(35)
-
-        # Step 2: BLASTn Search
+        # 2. RUN BLAST (Step 2)
         self.step_signal.emit(2)
-        self.log_signal.emit(f"⚔️ Running BLASTn alignment against {db_name}...")
-        time.sleep(2.5) # Scanning takes time
-        self.progress_signal.emit(65)
-
-        # Step 3: Filtering
-        self.step_signal.emit(3)
-        self.log_signal.emit("🛡️ Filtering hits (Identity > 90%, Coverage > 80%)...")
-        time.sleep(1.0)
-        self.progress_signal.emit(85)
-
-        # --- PHASE 3: RESULTS ---
-        self.step_signal.emit(4)
-        self.log_signal.emit("📊 Compiling resistance profile...")
+        out_file = os.path.join(self.output_dir, "blast_results.txt")
+        self.log_signal.emit(f"💥 Running BLAST against {self.db_type.upper()} database...")
         
-        # Simulated Findings
-        if self.db_type == "card":
-            hits = random.randint(3, 12)
-            classes = "Beta-lactamase, Aminoglycoside"
-            top_hit = "blaTEM-1"
-        else:
-            hits = random.randint(5, 20)
-            classes = "Adherence, Toxin, Secretion"
-            top_hit = "Exotoxin A"
-            
+        # Command: blastn -query input -db database -outfmt 6 -out output
+        cmd = [
+            self.blast_path, 
+            "-query", self.input_file, 
+            "-db", self.db_path, 
+            "-out", out_file, 
+            "-outfmt", "6 qseqid sseqid pident length evalue bitscore", 
+            "-evalue", "1e-5"
+        ]
+        
+        try:
+            subprocess.run(cmd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            self.progress_signal.emit(60)
+            self.log_signal.emit("✅ Scan complete. Analyzing hits...")
+        except Exception as e:
+            self.finished_signal.emit(False, f"BLAST Error: {e}")
+            return
+
+        # 3. PARSE RESULTS (Step 3)
+        self.step_signal.emit(3)
+        hits = 0
+        top_hit = "None"
+        classes = set()
+        
+        if os.path.exists(out_file):
+            with open(out_file, "r") as f:
+                for line in f:
+                    hits += 1
+                    cols = line.split("\t")
+                    if len(cols) > 1:
+                        # Parse Hit Name (e.g., "gnl|CARD|MecA")
+                        hit_name = cols[1].split("|")[-1] if "|" in cols[1] else cols[1]
+                        classes.add(hit_name)
+                        if hits == 1: top_hit = hit_name
+
+        # 4. REPORT (Step 4)
+        self.step_signal.emit(4)
         results = {
             "total_hits": hits,
-            "classes": classes,
-            "top_hit": top_hit,
-            "db": self.db_type.upper()
+            "classes": f"{len(classes)} Types Detected",
+            "top_hit": top_hit
         }
         
         self.result_signal.emit(results)
-        time.sleep(0.5)
-        
         self.progress_signal.emit(100)
-        self.log_signal.emit(f"🎉 Scan Complete. Found {hits} significant hits.")
+        self.log_signal.emit(f"🎉 Found {hits} potential threats.")
         self.finished_signal.emit(True, "Success")

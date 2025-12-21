@@ -1,108 +1,92 @@
-import time
-import random
 import os
+import subprocess
 from PySide6.QtCore import QThread, Signal
 
 class PhyloWorker(QThread):
     log_signal = Signal(str)
     progress_signal = Signal(int)
-    step_signal = Signal(int)         # Flowchart tracker
-    input_stats_signal = Signal(dict) # Taxa count, Sites
-    result_signal = Signal(dict)      # Final Tree & Model info
+    step_signal = Signal(int)
+    input_stats_signal = Signal(dict)
+    result_signal = Signal(dict)
     finished_signal = Signal(bool, str)
 
     def __init__(self, input_file):
         super().__init__()
-        self.input_file = input_file
+        self.input_file = input_file.replace("📄 ", "").strip()
+        
+        # DEFINE TOOL PATHS
+        base = os.getcwd()
+        self.mafft_path = os.path.join(base, "tools", "mafft", "mafft.bat")
+        self.fasttree_path = os.path.join(base, "tools", "fasttree", "FastTree.exe")
+        self.output_dir = os.path.join(base, "results", "phylogenetics")
+        os.makedirs(self.output_dir, exist_ok=True)
 
     def run(self):
-        # STEP 0: INITIALIZE
-        self.step_signal.emit(0)
-        self.log_signal.emit(f"🚀 Initializing Phylogenetic Inference on: {os.path.basename(self.input_file)}")
+        self.log_signal.emit("🚀 Initializing Phylogenetic Pipeline...")
         self.progress_signal.emit(5)
-        time.sleep(0.5)
 
-        # --- PHASE 1: READ ALIGNMENT DATA ---
-        self.log_signal.emit("🔍 Reading MSA (Multiple Sequence Alignment)...")
+        # 1. CHECK TOOLS
+        if not os.path.exists(self.mafft_path) or not os.path.exists(self.fasttree_path):
+            self.log_signal.emit("❌ CRITICAL: Tools missing (MAFFT or FastTree).")
+            self.finished_signal.emit(False, "Tools Missing")
+            return
+
+        # 2. ANALYZE INPUT (Step 0)
+        self.step_signal.emit(0)
+        taxa_count = 0
+        with open(self.input_file, 'r') as f:
+            taxa_count = sum(1 for line in f if line.startswith(">"))
+        
+        self.log_signal.emit(f"📊 Input loaded: {taxa_count} taxa found.")
+        self.input_stats_signal.emit({"taxa": taxa_count, "sites": "Unknown"})
+        self.progress_signal.emit(15)
+
+        # 3. ALIGNMENT (MAFFT) (Step 1)
+        self.step_signal.emit(1)
+        aln_file = os.path.join(self.output_dir, "alignment.fasta")
+        self.log_signal.emit("🧬 Running MAFFT Alignment (auto mode)...")
+        
+        # MAFFT command: mafft.bat --auto input > output
+        cmd_mafft = [self.mafft_path, "--auto", self.input_file]
+        
         try:
-            with open(self.input_file, 'r') as f:
-                content = f.read()
-            
-            # Count Taxa (headers start with '>')
-            taxa_count = content.count('>')
-            if taxa_count == 0: taxa_count = 1 # Fallback for dummy file
-            
-            # Estimate Alignment Length
-            lines = content.splitlines()
-            seq_len = 0
-            for line in lines:
-                if not line.startswith(">") and len(line) > 0:
-                    seq_len += len(line)
-                    break # Just measure the first sequence
-            
-            # Emit Input Stats
-            self.input_stats_signal.emit({
-                "taxa": taxa_count,
-                "sites": seq_len
-            })
-            self.log_signal.emit(f"✅ Alignment Check: {taxa_count} taxa, {seq_len} sites.")
-            self.progress_signal.emit(15)
-
+            with open(aln_file, "w") as out_f:
+                subprocess.run(cmd_mafft, stdout=out_f, stderr=subprocess.PIPE, check=True, text=True)
+            self.log_signal.emit("✅ Alignment completed.")
+            self.progress_signal.emit(50)
         except Exception as e:
+            self.log_signal.emit(f"❌ MAFFT Failed: {e}")
             self.finished_signal.emit(False, str(e))
             return
 
-        # --- PHASE 2: PIPELINE SIMULATION ---
-        
-        # Step 1: Substitution Model
-        self.step_signal.emit(1)
-        self.log_signal.emit("⚙️ ModelTest-NG: Testing 88 substitution models...")
-        time.sleep(1.5)
-        selected_model = random.choice(["GTR+I+G", "HKY85", "Jukes-Cantor", "TIM2+G"])
-        self.log_signal.emit(f"✅ Best Fit Model Selected: {selected_model} (BIC score: 1240.5)")
-        self.progress_signal.emit(40)
-
-        # Step 2: Tree Topology Search
+        # 4. TREE BUILDING (FastTree) (Step 2)
         self.step_signal.emit(2)
-        self.log_signal.emit("🌳 Calculating Maximum Likelihood (ML) tree topology...")
-        time.sleep(2.0)
-        self.progress_signal.emit(70)
+        tree_file = os.path.join(self.output_dir, "tree.nwk")
+        self.log_signal.emit("🌳 Building Tree with FastTree (GTR+CAT)...")
+        
+        # FastTree command: FastTree -gtr -nt alignment > tree
+        cmd_tree = [self.fasttree_path, "-gtr", "-nt", aln_file]
+        
+        try:
+            with open(tree_file, "w") as out_f:
+                subprocess.run(cmd_tree, stdout=out_f, stderr=subprocess.PIPE, check=True, text=True)
+            self.log_signal.emit("✅ Tree construction completed.")
+            self.progress_signal.emit(90)
+        except Exception as e:
+            self.log_signal.emit(f"❌ FastTree Failed: {e}")
+            self.finished_signal.emit(False, str(e))
+            return
 
-        # Step 3: Bootstrapping
-        self.step_signal.emit(3)
-        self.log_signal.emit("🔄 Running Rapid Bootstrapping (1000 replicates)...")
-        time.sleep(1.5)
-        self.progress_signal.emit(90)
-
-        # --- PHASE 3: FINALIZE & VISUALIZE ---
+        # 5. RENDER RESULTS
         self.step_signal.emit(4)
-        self.log_signal.emit("💾 Saving 'phylogeny.nwk' and rendering preview...")
-        
-        # Generate Fake ASCII Tree for Visualization
-        ascii_tree = f"""
-        (Root)
-          |
-          +--- {os.path.basename(self.input_file)}_Strain_A
-          |
-          +--- (Clade_1)
-          |      |
-          |      +--- E.coli_K12
-          |      +--- S.enterica_Typhi
-          |
-          +--- (Clade_2) [Support: 98%]
-                 |
-                 +--- P.aeruginosa_PAO1
-                 +--- {os.path.basename(self.input_file)}_Strain_B
-        """
-        
+        with open(tree_file, "r") as f:
+            tree_data = f.read()
+
         results = {
-            "model": selected_model,
-            "bootstrap": "98.5%",
-            "tree_view": ascii_tree
+            "model": "GTR+CAT",
+            "tree_view": tree_data  # The Newick string to show in UI
         }
-        
         self.result_signal.emit(results)
-        time.sleep(0.5)
         self.progress_signal.emit(100)
-        self.log_signal.emit("🎉 Phylogenetics Pipeline Completed.")
+        self.log_signal.emit(f"💾 Results saved to: {tree_file}")
         self.finished_signal.emit(True, "Success")

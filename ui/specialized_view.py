@@ -1,139 +1,245 @@
+import os
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                                QLabel, QFileDialog, QProgressBar, QTextEdit, 
-                               QFrame, QGraphicsDropShadowEffect, QSizePolicy, QComboBox)
+                               QFrame, QTableWidget, QTableWidgetItem, QHeaderView,
+                               QRadioButton, QButtonGroup)
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QFont
+
+# IMPORT YOUR UPDATED WORKER
 from core.specialized.specialized_engine import SpecializedWorker
 
 class SpecializedView(QWidget):
     def __init__(self):
         super().__init__()
-        self.worker = None 
-        self.step_widgets = []
+        self.worker = None
+        self.current_mode = "card" # Default to AMR
+        self.selected_file = ""
 
-        # UNIFIED BLUE THEME FOR UI ELEMENTS
+        # --- STYLESHEET ---
         self.setStyleSheet("""
             QWidget { background-color: #F4F7FE; font-family: 'Segoe UI', sans-serif; }
-            QFrame#main_card { background-color: #FFFFFF; border-radius: 20px; border: 1px solid #F0F0F0; }
-            QLabel#section_header { color: #2B3674; font-size: 14px; font-weight: 800; margin-top: 15px; }
             
-            /* PIPELINE TRACKER (BLUE) */
-            QLabel#step_label { color: #A3AED0; font-weight: 600; font-size: 11px; }
-            QLabel#step_label[status="active"] { color: #4318FF; font-weight: 800; }
-            QFrame#step_dot { background: #E0E5F2; border-radius: 8px; }
-            QFrame#step_dot[status="active"] { background: #4318FF; border: 2px solid #DCE4F5; }
-            QFrame#step_line { background: #E0E5F2; }
-            QFrame#step_line[status="active"] { background: #4318FF; }
+            /* HEADERS */
+            QLabel#main_title { color: #2B3674; font-size: 26px; font-weight: 900; }
+            QLabel#sub_title { color: #A3AED0; font-size: 14px; font-weight: 500; }
+            
+            /* PANELS */
+            QFrame#panel_box { background-color: #FFFFFF; border-radius: 16px; border: 1px solid #E0E5F2; }
+            QLabel#panel_title { 
+                color: #2B3674; font-size: 14px; font-weight: 800; 
+                border-bottom: 2px solid #F0F0F0; padding-bottom: 10px; margin-bottom: 10px;
+            }
 
-            /* CONTROLS */
-            QLabel#path_display { background-color: #F8F9FC; color: #A3AED0; font-weight: 600; border-radius: 12px; padding-left: 15px; border: 1px solid #E0E5F2; }
-            QLabel#path_display[active="true"] { background-color: #F2F0FF; color: #4318FF; border: 1px solid #4318FF; }
-
-            QPushButton#btn_browse { background-color: #E9EDF7; color: #4318FF; font-weight: 700; border-radius: 12px; border: none; }
+            /* INPUTS */
+            QPushButton { border-radius: 8px; font-weight: 700; font-size: 13px; border: none; }
+            QPushButton#btn_browse { background-color: #E9EDF7; color: #4318FF; }
             QPushButton#btn_browse:hover { background-color: #DCE4F5; }
             
-            /* PRIMARY BUTTON (BLUE) */
-            QPushButton#btn_run { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4318FF, stop:1 #868CFF); color: white; font-size: 15px; font-weight: 700; border-radius: 12px; border: none; }
-            QPushButton#btn_run:hover { margin-top: -2px; }
-            QPushButton#btn_run:disabled { background: #A3AED0; }
-            
-            QComboBox { padding: 10px; border-radius: 10px; border: 1px solid #E0E5F2; background: white; font-weight: 600; color: #2B3674; }
+            /* RUN BUTTONS */
+            QPushButton#btn_run_card { background: #E04F5F; color: white; font-size: 14px; }
+            QPushButton#btn_run_card:hover { background: #C22F3E; }
+            QPushButton#btn_run_vfdb { background: #8E44AD; color: white; font-size: 14px; }
+            QPushButton#btn_run_vfdb:hover { background: #732D91; }
 
-            /* Terminal keeps RED text to signal Threat Analysis context */
-            QTextEdit#terminal { background-color: #111C44; color: #FF5B5B; font-family: 'Consolas', monospace; font-size: 12px; border-radius: 15px; padding: 15px; border: none; }
-            
-            QFrame#stat_card { background: #FFFFFF; border-radius: 15px; border: 1px solid #F4F7FE; }
-            QLabel#stat_val { font-size: 24px; font-weight: 900; }
-            QLabel#stat_title { color: #A3AED0; font-size: 11px; font-weight: 700; }
-            QProgressBar { background: #F4F7FE; border-radius: 3px; height: 6px; text-align: center; }
-            QProgressBar::chunk { background: #4318FF; border-radius: 3px; }
+            /* TABLE */
+            QTableWidget { border: 1px solid #E0E5F2; border-radius: 8px; background: white; gridline-color: #F0F0F0; }
+            QHeaderView::section { background-color: #F4F7FE; color: #A3AED0; font-weight: bold; border: none; padding: 8px; }
+
+            /* RISK BADGE */
+            QLabel#risk_badge { border-radius: 6px; padding: 4px 10px; font-weight: 900; color: white; }
+
+            /* LOG TERMINAL - FIXED VISIBILITY */
+            QTextEdit#terminal { 
+                background-color: #101010; 
+                color: #00FF00; 
+                font-family: 'Consolas', monospace;
+                border: 1px solid #333;
+                border-radius: 8px;
+            }
         """)
 
-        self.layout = QVBoxLayout(self); self.layout.setContentsMargins(30,30,30,30)
-        self.card = QFrame(); self.card.setObjectName("main_card"); self.apply_shadow(self.card)
-        self.card_layout = QVBoxLayout(self.card); self.card_layout.setContentsMargins(30,30,30,30); self.card_layout.setSpacing(10)
-        self.setup_header(); self.setup_pipeline_tracker(); self.setup_controls()
-        line = QFrame(); line.setFixedHeight(1); line.setStyleSheet("background: #F0F0F0;"); self.card_layout.addWidget(line)
-        self.setup_visuals(); self.setup_terminal(); self.layout.addWidget(self.card)
+        # --- LAYOUT ---
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(30, 30, 30, 30)
+        main_layout.setSpacing(20)
 
-    def setup_header(self):
-        h = QHBoxLayout(); icon = QLabel("🛡️"); icon.setStyleSheet("font-size: 32px; background: transparent;")
-        v = QVBoxLayout(); t1 = QLabel("Specialized Screening Module"); t1.setStyleSheet("color: #2B3674; font-size: 22px; font-weight: 900;")
-        t2 = QLabel("Antibiotic Resistance (AMR) & Virulence Factor Detection"); t2.setStyleSheet("color: #A3AED0; font-weight: 600; font-size: 12px;")
-        v.addWidget(t1); v.addWidget(t2); h.addWidget(icon); h.addSpacing(15); h.addLayout(v); h.addStretch(); self.card_layout.addLayout(h)
+        self.setup_header(main_layout)
+        self.setup_controls(main_layout)
+        self.setup_dashboard(main_layout)
+        self.setup_logs(main_layout)
 
-    def setup_pipeline_tracker(self):
-        self.track_container = QWidget(); l = QHBoxLayout(self.track_container); l.setContentsMargins(10,10,10,10)
-        steps = ["GENOME CHECK", "LOAD DB", "BLAST SCAN", "FILTER HITS", "REPORT"]
-        for i, text in enumerate(steps):
-            dot = QFrame(); dot.setObjectName("step_dot"); dot.setFixedSize(16, 16)
-            lbl = QLabel(text); lbl.setObjectName("step_label"); lbl.setAlignment(Qt.AlignCenter)
-            v = QVBoxLayout(); v.setSpacing(5); v.setAlignment(Qt.AlignCenter)
-            v.addWidget(dot, 0, Qt.AlignCenter); v.addWidget(lbl); l.addLayout(v)
-            if i < len(steps) - 1:
-                line = QFrame(); line.setObjectName("step_line"); line.setFixedHeight(4); line.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed); l.addWidget(line)
-            self.step_widgets.append({"dot": dot, "lbl": lbl, "line": line})
-        self.card_layout.addWidget(self.track_container)
-
-    def setup_controls(self):
+    def setup_header(self, layout):
         h = QHBoxLayout()
-        self.db_selector = QComboBox(); self.db_selector.addItems(["CARD (Antibiotic Resistance)", "VFDB (Virulence Factors)"]); self.db_selector.setFixedSize(220, 50)
-        self.path_lbl = QLabel("  No Genome Selected"); self.path_lbl.setObjectName("path_display"); self.path_lbl.setFixedHeight(50)
-        btn_browse = QPushButton("📂 Load File"); btn_browse.setObjectName("btn_browse"); btn_browse.setFixedSize(120, 50)
-        btn_browse.setCursor(Qt.PointingHandCursor); btn_browse.clicked.connect(self.select_file)
-        h.addWidget(self.db_selector); h.addSpacing(10); h.addWidget(self.path_lbl); h.addSpacing(10); h.addWidget(btn_browse)
-        self.card_layout.addLayout(h)
-        self.btn_run = QPushButton("START SCREENING SCAN"); self.btn_run.setObjectName("btn_run"); self.btn_run.setFixedHeight(50)
-        self.btn_run.setCursor(Qt.PointingHandCursor); self.btn_run.setEnabled(False); self.btn_run.clicked.connect(self.run_process)
-        self.progress = QProgressBar(); self.card_layout.addWidget(self.btn_run); self.card_layout.addWidget(self.progress)
+        self.icon_lbl = QLabel("💊"); self.icon_lbl.setStyleSheet("font-size: 40px; background: transparent;")
+        
+        v = QVBoxLayout(); v.setSpacing(4)
+        self.title_lbl = QLabel("AMR Resistance Scanner"); self.title_lbl.setObjectName("main_title")
+        self.desc_lbl = QLabel("Identify antibiotic resistance genes using CARD Database"); self.desc_lbl.setObjectName("sub_title")
+        
+        v.addWidget(self.title_lbl); v.addWidget(self.desc_lbl)
+        h.addWidget(self.icon_lbl); h.addSpacing(20); h.addLayout(v); h.addStretch()
+        layout.addLayout(h)
 
-    def setup_visuals(self):
-        self.vis_container = QWidget(); self.vis_container.setEnabled(False); self.vis_container.setStyleSheet("QWidget:disabled { opacity: 0.6; }")
-        vl = QVBoxLayout(self.vis_container); vl.setContentsMargins(0,0,0,0)
-        l1 = QLabel("DETECTION RESULTS"); l1.setObjectName("section_header"); vl.addWidget(l1)
-        r1 = QHBoxLayout(); r1.setSpacing(15)
-        # KEEP DATA CARDS RED (ALERT STYLE)
-        self.hits_card = self.create_stat_card("Total Hits", "⚠️", "#FF5B5B")
-        self.class_card = self.create_stat_card("Target Classes", "💊", "#2B3674")
-        self.top_card = self.create_stat_card("Highest Threat", "☠️", "#FFAB00")
-        r1.addWidget(self.hits_card[0]); r1.addWidget(self.class_card[0]); r1.addWidget(self.top_card[0]); vl.addLayout(r1)
-        self.card_layout.addWidget(self.vis_container)
+    def setup_controls(self, layout):
+        panel = QFrame(); panel.setObjectName("panel_box")
+        l = QVBoxLayout(panel); l.setContentsMargins(20, 20, 20, 20)
+        
+        # Row 1: Mode Selection
+        l.addWidget(QLabel("🎯 ANALYSIS MODE", objectName="panel_title"))
+        mode_row = QHBoxLayout()
+        self.rb_amr = QRadioButton("Antibiotic Resistance (AMR)"); self.rb_amr.setChecked(True)
+        self.rb_vir = QRadioButton("Virulence Factors (Pathogenicity)")
+        
+        # Styling Radio Buttons
+        for rb in [self.rb_amr, self.rb_vir]:
+            rb.setStyleSheet("font-size: 14px; font-weight: 600; color: #2B3674; margin-right: 20px;")
+            rb.toggled.connect(self.switch_mode)
+            mode_row.addWidget(rb)
+        mode_row.addStretch()
+        l.addLayout(mode_row)
+        l.addSpacing(15)
 
-    def setup_terminal(self):
-        l = QLabel("SCANNER LOGS"); l.setObjectName("section_header"); self.card_layout.addWidget(l)
+        # Row 2: File Selection
+        l.addWidget(QLabel("📂 INPUT PROTEINS (.faa)", objectName="panel_title"))
+        file_row = QHBoxLayout()
+        self.path_lbl = QLabel(" No file selected (Run Annotation First)"); self.path_lbl.setStyleSheet("color: #A3AED0; font-style: italic;")
+        btn_browse = QPushButton("Select File"); btn_browse.setObjectName("btn_browse"); btn_browse.setFixedSize(120, 40)
+        btn_browse.clicked.connect(self.select_file)
+        
+        file_row.addWidget(self.path_lbl); file_row.addStretch(); file_row.addWidget(btn_browse)
+        l.addLayout(file_row)
+        l.addSpacing(15)
+
+        # Run Button
+        self.btn_run = QPushButton("START AMR SCAN"); self.btn_run.setObjectName("btn_run_card")
+        self.btn_run.setFixedHeight(50); self.btn_run.setEnabled(False)
+        self.btn_run.clicked.connect(self.run_process)
+        l.addWidget(self.btn_run)
+        
+        # Progress
+        self.progress = QProgressBar(); self.progress.setFixedHeight(4); self.progress.setTextVisible(False)
+        self.progress.setStyleSheet("border: none; background: transparent; QProgressBar::chunk { background: #E04F5F; }")
+        l.addWidget(self.progress)
+        
+        layout.addWidget(panel)
+
+    def setup_dashboard(self, layout):
+        row = QHBoxLayout(); row.setSpacing(20)
+
+        # Left: Risk Metrics
+        stats_panel = QFrame(); stats_panel.setObjectName("panel_box"); stats_panel.setFixedWidth(280)
+        sl = QVBoxLayout(stats_panel); sl.setContentsMargins(20, 20, 20, 20)
+        sl.addWidget(QLabel("📊 RISK ASSESSMENT", objectName="panel_title"))
+        
+        # Risk Badge
+        self.risk_badge = QLabel("WAITING"); self.risk_badge.setObjectName("risk_badge")
+        self.risk_badge.setStyleSheet("background: #E0E5F2; color: #A3AED0;")
+        self.risk_badge.setAlignment(Qt.AlignCenter); self.risk_badge.setFixedHeight(30)
+        
+        # Big Number
+        self.count_lbl = QLabel("0"); self.count_lbl.setStyleSheet("font-size: 56px; font-weight: 900; color: #2B3674;")
+        self.count_desc = QLabel("Potential Threats Detected"); self.count_desc.setStyleSheet("color: #A3AED0; font-weight: 600;")
+        
+        sl.addWidget(self.risk_badge); sl.addSpacing(20)
+        sl.addWidget(self.count_lbl); sl.addWidget(self.count_desc)
+        sl.addStretch()
+        
+        # Right: Table
+        table_panel = QFrame(); table_panel.setObjectName("panel_box")
+        tl = QVBoxLayout(table_panel); tl.setContentsMargins(20, 20, 20, 20)
+        tl.addWidget(QLabel("🧬 DETECTED GENE FAMILIES", objectName="panel_title"))
+        
+        self.table = QTableWidget(); self.table.setColumnCount(2)
+        self.table.setHorizontalHeaderLabels(["Gene Family / Class", "Status"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.verticalHeader().setVisible(False)
+        tl.addWidget(self.table)
+
+        row.addWidget(stats_panel); row.addWidget(table_panel)
+        layout.addLayout(row)
+
+    def setup_logs(self, layout):
+        panel = QFrame(); panel.setObjectName("panel_box")
+        l = QVBoxLayout(panel); l.setContentsMargins(20, 20, 20, 20)
+        l.addWidget(QLabel("📝 SCAN LOGS", objectName="panel_title"))
         self.terminal = QTextEdit(); self.terminal.setObjectName("terminal"); self.terminal.setReadOnly(True)
-        self.terminal.setPlaceholderText("System ready..."); self.terminal.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.card_layout.addWidget(self.terminal)
+        self.terminal.setFixedHeight(120)
+        l.addWidget(self.terminal)
+        layout.addWidget(panel)
 
-    def create_stat_card(self, title, icon, color):
-        card = QFrame(); card.setObjectName("stat_card"); self.apply_shadow(card)
-        l = QVBoxLayout(card); l.setContentsMargins(20, 15, 20, 15); top = QHBoxLayout()
-        ico = QLabel(icon); ico.setStyleSheet(f"color: {color}; font-size: 18px; background: transparent;")
-        txt = QLabel(title); txt.setObjectName("stat_title"); top.addWidget(ico); top.addSpacing(8); top.addWidget(txt); top.addStretch()
-        val = QLabel("-"); val.setObjectName("stat_val"); val.setStyleSheet(f"color: {color};"); l.addLayout(top); l.addWidget(val)
-        return card, val, l
+    # --- LOGIC ---
 
-    def apply_shadow(self, w):
-        e = QGraphicsDropShadowEffect(); e.setBlurRadius(20); e.setColor(QColor(112, 144, 176, 20)); e.setOffset(0, 5); w.setGraphicsEffect(e)
+    def switch_mode(self):
+        if self.rb_amr.isChecked():
+            self.current_mode = "card"
+            self.icon_lbl.setText("💊")
+            self.title_lbl.setText("AMR Resistance Scanner")
+            self.desc_lbl.setText("Identify antibiotic resistance genes using CARD Database")
+            self.btn_run.setText("START AMR SCAN")
+            self.btn_run.setObjectName("btn_run_card")
+            self.progress.setStyleSheet("border: none; background: transparent; QProgressBar::chunk { background: #E04F5F; }")
+        else:
+            self.current_mode = "vfdb"
+            self.icon_lbl.setText("☣️")
+            self.title_lbl.setText("Virulence Factor Scanner")
+            self.desc_lbl.setText("Identify pathogenicity factors using VFDB Database")
+            self.btn_run.setText("START VIRULENCE SCAN")
+            self.btn_run.setObjectName("btn_run_vfdb")
+            self.progress.setStyleSheet("border: none; background: transparent; QProgressBar::chunk { background: #8E44AD; }")
+        
+        # Force style update
+        self.btn_run.style().unpolish(self.btn_run)
+        self.btn_run.style().polish(self.btn_run)
+
     def select_file(self):
-        f, _ = QFileDialog.getOpenFileName(self, "Select Genome", "", "FASTA Files (*.fasta *.fa *.fna)")
+        default_dir = os.path.join(os.getcwd(), "results", "annotation")
+        f, _ = QFileDialog.getOpenFileName(self, "Select Protein File", default_dir, "Protein Fasta (*.faa)")
         if f:
-            self.path_lbl.setText(f"  📄 {f}"); self.path_lbl.setProperty("active", True); self.path_lbl.style().unpolish(self.path_lbl); self.path_lbl.style().polish(self.path_lbl); self.btn_run.setEnabled(True); self.log(f"Genome loaded: {f}")
-    def log(self, msg):
-        self.terminal.append(f"> {msg}"); self.terminal.verticalScrollBar().setValue(self.terminal.verticalScrollBar().maximum())
-    def update_step(self, step_idx):
-        for i, w in enumerate(self.step_widgets):
-            status = "active" if i <= step_idx else ""
-            w["dot"].setProperty("status", status); w["lbl"].setProperty("status", status); w["dot"].style().unpolish(w["dot"]); w["dot"].style().polish(w["dot"]); w["lbl"].style().unpolish(w["lbl"]); w["lbl"].style().polish(w["lbl"])
-            if w["line"] and i < step_idx:
-                w["line"].setProperty("status", "active"); w["line"].style().unpolish(w["line"]); w["line"].style().polish(w["line"])
+            self.path_lbl.setText(f"📄 {os.path.basename(f)}")
+            self.path_lbl.setStyleSheet("color: #2B3674; font-weight: 600;")
+            self.selected_file = f
+            self.btn_run.setEnabled(True)
+            self.log(f"Loaded input: {os.path.basename(f)}")
+
     def run_process(self):
-        raw = self.path_lbl.text().replace("  📄 ", "").strip(); db_choice = "card" if "CARD" in self.db_selector.currentText() else "vfdb"
-        self.terminal.clear(); self.progress.setValue(0); self.btn_run.setEnabled(False); self.vis_container.setEnabled(True); self.vis_container.setStyleSheet(""); self.update_step(-1)
-        self.worker = SpecializedWorker(raw, db_choice)
-        self.worker.log_signal.connect(self.log); self.worker.progress_signal.connect(self.progress.setValue); self.worker.step_signal.connect(self.update_step)
-        self.worker.result_signal.connect(self.update_results); self.worker.finished_signal.connect(self.on_finished); self.worker.start()
-    def update_results(self, data):
-        self.hits_card[1].setText(f"{data['total_hits']}"); self.class_card[1].setText(data['classes']); self.class_card[1].setStyleSheet("font-size: 14px; font-weight: 700; color: #2B3674;"); self.top_card[1].setText(data['top_hit']); self.top_card[1].setStyleSheet("font-size: 18px; font-weight: 800; color: #FFAB00;")
-    def on_finished(self, s, m):
-        self.btn_run.setEnabled(True); self.log("--- DONE ---" if s else f"ERROR: {m}")
+        self.terminal.clear(); self.progress.setValue(0); self.table.setRowCount(0)
+        self.btn_run.setEnabled(False)
+        self.count_lbl.setText("0")
+        self.risk_badge.setText("SCANNING...")
+        self.risk_badge.setStyleSheet("background: #E0E5F2; color: #707EAE;")
+
+        self.worker = SpecializedWorker(self.selected_file, self.current_mode)
+        self.worker.log_signal.connect(self.log)
+        self.worker.progress_signal.connect(self.progress.setValue)
+        self.worker.result_signal.connect(self.display_results)
+        self.worker.finished_signal.connect(lambda: self.btn_run.setEnabled(True))
+        self.worker.start()
+
+    def display_results(self, data):
+        hits = data['total_hits']
+        classes = data['classes']
+        risk = data['risk_level']
+
+        # Update Count
+        self.count_lbl.setText(str(hits))
+
+        # Update Risk Badge
+        if risk == "HIGH":
+            self.risk_badge.setText("⚠️ HIGH RISK")
+            self.risk_badge.setStyleSheet("background: #FF5252; color: white;")
+        elif risk == "MEDIUM":
+            self.risk_badge.setText("⚠️ MEDIUM RISK")
+            self.risk_badge.setStyleSheet("background: #FFAB00; color: white;")
+        else:
+            self.risk_badge.setText("✅ LOW RISK")
+            self.risk_badge.setStyleSheet("background: #05CD99; color: white;")
+
+        # Populate Table
+        self.table.setRowCount(len(classes))
+        for i, item in enumerate(classes):
+            self.table.setItem(i, 0, QTableWidgetItem(item))
+            self.table.setItem(i, 1, QTableWidgetItem("Detected"))
+
+    def log(self, msg):
+        self.terminal.append(f"> {msg}")

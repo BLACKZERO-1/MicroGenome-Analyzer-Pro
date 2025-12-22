@@ -1,94 +1,167 @@
-import time
-import random
 import os
+import subprocess
+import matplotlib.pyplot as plt
 from PySide6.QtCore import QThread, Signal
 
 class ComparativeWorker(QThread):
+    # Signals for UI updates
     log_signal = Signal(str)
     progress_signal = Signal(int)
-    stats_signal = Signal(dict)       # For Final Results (Core/Accessory)
-    input_stats_signal = Signal(dict) # For Input Metrics (Size/Count)
-    step_signal = Signal(int)         # For Visual Pipeline Tracker (0-4)
+    result_signal = Signal(dict)       # Sends Plot Path & Stats to UI
     finished_signal = Signal(bool, str)
 
-    def __init__(self, file_list):
+    def __init__(self, query_file, ref_file):
+        """
+        query_file: The User's Genome (FASTA)
+        ref_file: The Reference Genome (FASTA) e.g., E. coli K12
+        """
         super().__init__()
-        self.files = file_list
+        self.query_file = query_file
+        self.ref_file = ref_file
+        
+        self.base_path = os.getcwd()
+        self.output_dir = os.path.join(self.base_path, "results", "comparative")
+        os.makedirs(self.output_dir, exist_ok=True)
+
+        # Tools
+        self.blastn_path = os.path.join(self.base_path, "tools", "blast", "blastn.exe")
+        self.makeblastdb_path = os.path.join(self.base_path, "tools", "blast", "makeblastdb.exe")
 
     def run(self):
-        # STEP 0: INITIALIZATION
-        self.step_signal.emit(0) 
-        self.log_signal.emit(f"🚀 Initializing Pangenome Pipeline...")
+        self.log_signal.emit("🚀 Initializing Comparative Genomics Engine...")
         self.progress_signal.emit(5)
-        time.sleep(0.5)
 
-        # --- PHASE 1: INPUT PROCESSING ---
-        self.log_signal.emit("🔍 Parsing input genomes...")
-        try:
-            total_size_bp = 0
-            for fpath in self.files:
-                with open(fpath, 'r') as f:
-                    content = f.read()
-                    raw = "".join([line.strip() for line in content.splitlines() if not line.startswith(">")])
-                    total_size_bp += len(raw)
-            
-            num_files = len(self.files)
-            
-            # EMIT INPUT STATS (Visualized Immediately)
-            self.input_stats_signal.emit({
-                "count": num_files,
-                "size": total_size_bp
-            })
-            self.log_signal.emit(f"✅ Input Processed: {total_size_bp:,} bp across {num_files} isolates.")
-            self.progress_signal.emit(15)
-            
-        except Exception as e:
-            self.finished_signal.emit(False, str(e))
+        # 1. VALIDATION
+        if not os.path.exists(self.query_file):
+            self.finished_signal.emit(False, "Query file missing.")
+            return
+        if not os.path.exists(self.ref_file):
+            self.finished_signal.emit(False, "Reference file missing.")
+            return
+        if not os.path.exists(self.blastn_path):
+            self.finished_signal.emit(False, "CRITICAL: blastn.exe not found.")
             return
 
-        # --- PHASE 2: PIPELINE SIMULATION ---
+        # 2. BUILD REFERENCE DATABASE (Step 1)
+        # We need to turn the Reference Genome into a BLAST DB so we can search it.
+        self.log_signal.emit("📦 Building Reference Database...")
+        ref_db_name = os.path.join(self.output_dir, "temp_ref_db")
         
-        # Step 1: Conversion (GFF3)
-        self.step_signal.emit(1)
-        self.log_signal.emit("🧬 Converting FASTA sequences to GFF3 format...")
-        time.sleep(1.5)
-        self.progress_signal.emit(30)
+        # Command: makeblastdb -in reference.fasta -dbtype nucl ...
+        cmd_db = [
+            self.makeblastdb_path, 
+            "-in", self.ref_file, 
+            "-dbtype", "nucl", 
+            "-out", ref_db_name,
+            "-title", "ReferenceDB"
+        ]
+        
+        try:
+            self.run_subprocess(cmd_db)
+            self.progress_signal.emit(30)
+            self.log_signal.emit("✅ Reference Database Built.")
+        except Exception as e:
+            self.finished_signal.emit(False, f"DB Error: {str(e)}")
+            return
 
-        # Step 2: Alignment (BLAST)
-        self.step_signal.emit(2)
-        self.log_signal.emit("🔄 Running all-vs-all BLAST alignment...")
-        time.sleep(2.0)
-        self.progress_signal.emit(60)
+        # 3. RUN SYNTENY ALIGNMENT (Step 2)
+        # Compares Input vs Reference to find matching regions
+        self.log_signal.emit("⚔️  Running Whole Genome Alignment (BLASTN)...")
+        alignment_file = os.path.join(self.output_dir, "alignment.tsv")
+        
+        # Command: blastn -query input -db ref -outfmt 6 ...
+        # Output columns: qstart qend sstart send pident length
+        cmd_blast = [
+            self.blastn_path,
+            "-query", self.query_file,
+            "-db", ref_db_name,
+            "-out", alignment_file,
+            "-outfmt", "6 qstart qend sstart send pident length",
+            "-evalue", "1e-10",
+            "-perc_identity", "95" # Strict matching for synteny
+        ]
 
-        # Step 3: Clustering (MCL)
-        self.step_signal.emit(3)
-        self.log_signal.emit("🕸️ Performing Markov Clustering (MCL) of gene families...")
-        time.sleep(1.5)
-        self.progress_signal.emit(80)
+        try:
+            self.run_subprocess(cmd_blast)
+            self.progress_signal.emit(70)
+            self.log_signal.emit("✅ Alignment Complete.")
+        except Exception as e:
+            self.finished_signal.emit(False, f"Alignment Error: {str(e)}")
+            return
 
-        # --- PHASE 3: RESULT GENERATION ---
-        self.step_signal.emit(4)
-        self.log_signal.emit("📉 Calculating Core vs. Accessory Genome statistics...")
+        # 4. GENERATE DOTPLOT (Step 3)
+        self.log_signal.emit("🎨 Generating Synteny Dotplot...")
+        try:
+            plot_path, match_count = self.create_dotplot(alignment_file)
+            
+            # Final Results Package
+            results = {
+                "plot_path": plot_path,
+                "matches": match_count,
+                "ref_name": os.path.basename(self.ref_file)
+            }
+            
+            self.result_signal.emit(results)
+            self.progress_signal.emit(100)
+            self.finished_signal.emit(True, "Success")
+            
+        except Exception as e:
+            self.finished_signal.emit(False, f"Plotting Error: {str(e)}")
+
+    def create_dotplot(self, tsv_file):
+        """
+        Reads BLAST results and plots a Diagonal Synteny Map using Matplotlib.
+        This visualizes large-scale genomic rearrangements (Synteny).
+        """
+        x_coords = [] # Query positions
+        y_coords = [] # Reference positions
+        colors = []   # Blue = Forward, Red = Inverted
+        count = 0
+
+        if not os.path.exists(tsv_file): return None, 0
+
+        with open(tsv_file, 'r') as f:
+            for line in f:
+                parts = line.strip().split('\t')
+                if len(parts) >= 4:
+                    count += 1
+                    # Parse BLAST coords
+                    q_start, q_end = int(parts[0]), int(parts[1])
+                    s_start, s_end = int(parts[2]), int(parts[3])
+                    
+                    x_coords.append([q_start, q_end])
+                    y_coords.append([s_start, s_end])
+                    
+                    # Color logic: Forward match vs Reverse Complement (Inversion)
+                    if s_start < s_end:
+                        colors.append('#4318FF') # Blue (Forward)
+                    else:
+                        colors.append('#E04F5F') # Red (Inversion)
+
+        # Plotting
+        plt.figure(figsize=(10, 8), dpi=100)
+        for i in range(len(x_coords)):
+            plt.plot(x_coords[i], y_coords[i], color=colors[i], linewidth=1.5, alpha=0.8)
+            
+        plt.title(f"Genome Synteny: Input vs {os.path.basename(self.ref_file)}", fontsize=14, fontweight='bold')
+        plt.xlabel("Query Genome Position (bp)", fontsize=12)
+        plt.ylabel("Reference Genome Position (bp)", fontsize=12)
+        plt.grid(True, linestyle='--', alpha=0.3)
         
-        # Calculate Logic
-        avg_genes = 3000 # Bacteria avg
-        total_pool = num_files * avg_genes
-        core_ratio = max(0.3, 0.9 - (num_files * 0.05)) # More files = smaller core
+        # Save Plot
+        out_png = os.path.join(self.output_dir, "synteny_plot.png")
+        plt.savefig(out_png, bbox_inches='tight')
+        plt.close()
         
-        core = int(avg_genes * core_ratio)
-        accessory = int(avg_genes * (1 - core_ratio) * num_files * 0.5)
-        unique = int(total_pool * 0.1) # Random uniqueness
+        return out_png, count
+
+    def run_subprocess(self, cmd):
+        """Runs command line tools silently on Windows."""
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         
-        stats = {
-            "core": core,
-            "accessory": accessory,
-            "unique": unique,
-            "total_clusters": core + accessory + unique
-        }
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, startupinfo=startupinfo)
+        stdout, stderr = process.communicate()
         
-        self.stats_signal.emit(stats)
-        time.sleep(1)
-        
-        self.progress_signal.emit(100)
-        self.log_signal.emit("🎉 Comparative Analysis Complete.")
-        self.finished_signal.emit(True, "Success")
+        if process.returncode != 0:
+            raise Exception(stderr.strip() or "Process failed")

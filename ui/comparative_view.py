@@ -1,245 +1,200 @@
 import os
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                                QLabel, QFileDialog, QProgressBar, QTextEdit, 
-                               QFrame, QSizePolicy, QScrollArea, QListWidget)
-from PySide6.QtCore import Qt, QRectF
-from PySide6.QtGui import QColor, QPainter, QBrush, QPen, QFont
+                               QFrame, QScrollArea)
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
+
+# IMPORT THE NEW ENGINE
 from core.comparative.comparative_engine import ComparativeWorker
 
-# ==============================================================================
-# 1. WIDGET: ANI IDENTITY GAUGE (Circular Identity Visualization)
-# ==============================================================================
-class ANIGaugeWidget(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setFixedHeight(180)
-        self.ani_value = 0.0
-        self.setStyleSheet("background: transparent;")
-
-    def update_value(self, val):
-        self.ani_value = float(val)
-        self.repaint()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        w, h = self.width(), self.height()
-        
-        # Draw Background Track (Semi-circle)
-        rect = QRectF(w/2 - 70, 20, 140, 140)
-        painter.setPen(QPen(QColor("#E0E5F2"), 12, Qt.SolidLine, Qt.RoundCap))
-        painter.drawArc(rect, -30 * 16, 240 * 16)
-        
-        # Draw Identity Progress
-        if self.ani_value > 0:
-            color = "#05CD99" if self.ani_value >= 95 else "#4318FF"
-            painter.setPen(QPen(QColor(color), 12, Qt.SolidLine, Qt.RoundCap))
-            span = (self.ani_value / 100.0) * 240
-            painter.drawArc(rect, 210 * 16, -span * 16)
-        
-        # Center Text
-        painter.setPen(QColor("#2B3674"))
-        font = QFont("Segoe UI", 20, QFont.Bold)
-        painter.setFont(font)
-        painter.drawText(rect, Qt.AlignCenter, f"{self.ani_value}%")
-        
-        font.setPixelSize(11); font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(0, h-20, w, 20, Qt.AlignCenter, "AVERAGE NUCLEOTIDE IDENTITY")
-
-# ==============================================================================
-# 2. MAIN COMPARATIVE DASHBOARD (Seamless & Professional)
-# ==============================================================================
 class ComparativeView(QWidget):
     def __init__(self):
         super().__init__()
-        self.worker = None 
+        self.worker = None
+        self.query_file = ""
+        self.ref_file = ""
 
+        # --- STYLESHEET ---
         self.setStyleSheet("""
             QWidget { background-color: #F4F7FE; font-family: 'Segoe UI', sans-serif; }
-            QLabel#main_title { color: #2B3674; font-size: 26px; font-weight: 900; letter-spacing: 1px; }
+            
+            /* HEADERS */
+            QLabel#main_title { color: #2B3674; font-size: 26px; font-weight: 900; }
             QLabel#sub_title { color: #A3AED0; font-size: 14px; font-weight: 500; }
             
+            /* PANELS */
             QFrame#panel_box { background-color: #FFFFFF; border-radius: 16px; border: 1px solid #E0E5F2; }
-            
             QLabel#panel_title { 
-                color: #2B3674; font-size: 14px; font-weight: 800; text-transform: uppercase;
-                border-bottom: 2px solid #F0F0F0; padding-bottom: 15px; margin-bottom: 20px;
+                color: #2B3674; font-size: 14px; font-weight: 800; 
+                border-bottom: 2px solid #F0F0F0; padding-bottom: 10px; margin-bottom: 10px;
             }
 
-            QListWidget { 
-                background-color: #F8F9FC; border: 1px solid #E0E5F2; border-radius: 8px; 
-                padding: 10px; color: #2B3674; font-weight: 600; font-size: 12px;
-            }
-
-            QPushButton#btn_action { background-color: #E9EDF7; color: #4318FF; border-radius: 8px; font-weight: 700; }
-            QPushButton#btn_action:hover { background-color: #DCE4F5; }
-
-            QPushButton#btn_run { background: #4318FF; color: white; font-size: 14px; font-weight: 700; border-radius: 8px; }
-            QPushButton#btn_run:hover { background: #3311CC; }
+            /* INPUTS */
+            QPushButton { border-radius: 8px; font-weight: 700; font-size: 13px; border: none; }
+            QPushButton#btn_browse { background-color: #E9EDF7; color: #4318FF; }
+            QPushButton#btn_browse:hover { background-color: #DCE4F5; }
             
+            /* RUN BUTTON */
+            QPushButton#btn_run { background: #4318FF; color: white; font-size: 14px; margin-top: 10px; }
+            QPushButton#btn_run:hover { background: #3311CC; }
+            QPushButton#btn_run:disabled { background: #A3AED0; }
+
+            /* LOG TERMINAL */
             QTextEdit#terminal { 
-                background-color: #111C44; color: #00E676; font-family: 'Consolas', monospace; 
-                font-size: 13px; border-radius: 8px; padding: 20px; border: none; 
+                background-color: #101010; 
+                color: #00FF00; 
+                font-family: 'Consolas', monospace;
+                border: 1px solid #333;
+                border-radius: 8px;
             }
-
-            QFrame#stat_card { background: #F8F9FC; border-radius: 12px; border: 1px solid #E0E5F2; }
-            QLabel#stat_val { font-size: 26px; font-weight: 900; color: #2B3674; }
-            QLabel#stat_title { color: #A3AED0; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-
-            QScrollArea { border: none; background: transparent; }
-            QWidget#scroll_content { background: transparent; }
+            
+            /* IMAGE VIEWER */
+            QLabel#img_viewer { background-color: #F4F7FE; border-radius: 8px; border: 2px dashed #E0E5F2; }
         """)
 
+        # --- LAYOUT ---
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setContentsMargins(30, 30, 30, 30)
+        main_layout.setSpacing(20)
 
-        # SCROLLABLE VIEWPORT
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        
-        self.content_widget = QWidget()
-        self.content_widget.setObjectName("scroll_content")
-        self.layout = QVBoxLayout(self.content_widget)
-        self.layout.setContentsMargins(40, 40, 40, 40)
-        self.layout.setSpacing(25)
+        self.setup_header(main_layout)
+        self.setup_controls(main_layout)
+        self.setup_results(main_layout)
 
-        # BUILD THE DASHBOARD
-        self.setup_centered_header()
-        self.setup_input_panel()
-        self.setup_metrics_panel()
-        self.setup_visual_panel()
-        self.setup_log_panel()
-
-        self.layout.addStretch()
-        self.scroll.setWidget(self.content_widget)
-        main_layout.addWidget(self.scroll)
-
-    def setup_centered_header(self):
+    def setup_header(self, layout):
         h = QHBoxLayout()
-        h.addStretch()
-        icon = QLabel("📊"); icon.setStyleSheet("font-size: 40px;")
-        v = QVBoxLayout(); v.setSpacing(4)
-        t1 = QLabel("Comparative Analysis Dashboard"); t1.setObjectName("main_title"); t1.setAlignment(Qt.AlignCenter)
-        t2 = QLabel("Pairwise Average Nucleotide Identity (ANI) Metrics"); t2.setObjectName("sub_title"); t2.setAlignment(Qt.AlignCenter)
-        v.addWidget(t1); v.addWidget(t2)
-        h.addWidget(icon); h.addSpacing(20); h.addLayout(v)
-        h.addStretch()
-        self.layout.addLayout(h)
-
-    def setup_input_panel(self):
-        panel = QFrame(); panel.setObjectName("panel_box")
-        l = QVBoxLayout(panel); l.setContentsMargins(30, 30, 30, 30)
-
-        t = QLabel("📂  Genome Queue Selection"); t.setObjectName("panel_title")
-        l.addWidget(t)
-
-        self.file_list = QListWidget()
-        self.file_list.setMinimumHeight(120)
-        l.addWidget(self.file_list)
-
-        row = QHBoxLayout()
-        btn_add = QPushButton("➕ Add Genomes"); btn_add.setObjectName("btn_action"); btn_add.setFixedSize(160, 45)
-        btn_add.clicked.connect(self.select_files)
-        btn_clear = QPushButton("🗑️ Clear List"); btn_clear.setObjectName("btn_action"); btn_clear.setFixedSize(120, 45)
-        btn_clear.clicked.connect(self.file_list.clear)
-        row.addWidget(btn_add); row.addWidget(btn_clear); row.addStretch()
-        l.addLayout(row)
-
-        self.btn_run = QPushButton("EXECUTE COMPARATIVE PIPELINE"); self.btn_run.setObjectName("btn_run")
-        self.btn_run.setFixedHeight(55); self.btn_run.setEnabled(False)
-        self.btn_run.clicked.connect(self.run_process)
-        l.addSpacing(15); l.addWidget(self.btn_run)
+        icon = QLabel("📊"); icon.setStyleSheet("font-size: 40px; background: transparent;")
         
-        self.progress = QProgressBar(); self.progress.setFixedHeight(4); self.progress.setTextVisible(False)
-        self.progress.setStyleSheet("background: transparent; border: none; QProgressBar::chunk { background: #4318FF; }")
+        v = QVBoxLayout(); v.setSpacing(4)
+        t1 = QLabel("Comparative Genomics"); t1.setObjectName("main_title")
+        t2 = QLabel("Generate Whole Genome Synteny Dotplots (BLASTN)"); t2.setObjectName("sub_title")
+        
+        v.addWidget(t1); v.addWidget(t2)
+        h.addWidget(icon); h.addSpacing(20); h.addLayout(v); h.addStretch()
+        layout.addLayout(h)
+
+    def setup_controls(self, layout):
+        panel = QFrame(); panel.setObjectName("panel_box")
+        l = QVBoxLayout(panel); l.setContentsMargins(20, 20, 20, 20)
+        
+        # 1. Query File (Input)
+        l.addWidget(QLabel("📂 QUERY GENOME (Your Sequence)", objectName="panel_title"))
+        r1 = QHBoxLayout()
+        self.lbl_query = QLabel("No file selected"); self.lbl_query.setStyleSheet("color: #A3AED0; font-style: italic;")
+        b1 = QPushButton("Select Query"); b1.setObjectName("btn_browse"); b1.setFixedSize(120, 35)
+        b1.clicked.connect(lambda: self.select_file("query"))
+        r1.addWidget(self.lbl_query); r1.addStretch(); r1.addWidget(b1)
+        l.addLayout(r1); l.addSpacing(10)
+
+        # 2. Reference File
+        l.addWidget(QLabel("📘 REFERENCE GENOME (e.g., E. coli K12)", objectName="panel_title"))
+        r2 = QHBoxLayout()
+        self.lbl_ref = QLabel("No file selected"); self.lbl_ref.setStyleSheet("color: #A3AED0; font-style: italic;")
+        b2 = QPushButton("Select Reference"); b2.setObjectName("btn_browse"); b2.setFixedSize(120, 35)
+        b2.clicked.connect(lambda: self.select_file("ref"))
+        r2.addWidget(self.lbl_ref); r2.addStretch(); r2.addWidget(b2)
+        l.addLayout(r2); l.addSpacing(15)
+
+        # 3. Run Button & Progress
+        self.btn_run = QPushButton("RUN SYNTENY CHECK"); self.btn_run.setObjectName("btn_run")
+        self.btn_run.setFixedHeight(45); self.btn_run.setEnabled(False)
+        self.btn_run.clicked.connect(self.run_comparison)
+        l.addWidget(self.btn_run)
+        
+        l.addSpacing(10)
+        self.progress = QProgressBar(); self.progress.setFixedHeight(6); self.progress.setTextVisible(False)
+        self.progress.setStyleSheet("border: none; background: #E0E5F2; border-radius: 3px; QProgressBar::chunk { background: #4318FF; border-radius: 3px; }")
         l.addWidget(self.progress)
 
-        self.layout.addWidget(panel)
+        layout.addWidget(panel)
 
-    def setup_metrics_panel(self):
-        panel = QFrame(); panel.setObjectName("panel_box")
-        l = QVBoxLayout(panel); l.setContentsMargins(30, 30, 30, 30)
-        t = QLabel("📊  Pairwise Identity Metrics"); t.setObjectName("panel_title")
-        l.addWidget(t)
-
+    def setup_results(self, layout):
         row = QHBoxLayout(); row.setSpacing(20)
-        self.ani_card, self.ani_val = self.create_stat_card("Identity Score (ANI)", "0.00%", "#4318FF")
-        self.cov_card, self.cov_val = self.create_stat_card("Alignment Coverage", "0.00%", "#05CD99")
-        row.addWidget(self.ani_card); row.addWidget(self.cov_card)
-        l.addLayout(row)
-        self.layout.addWidget(panel)
 
-    def setup_visual_panel(self):
-        panel = QFrame(); panel.setObjectName("panel_box")
-        l = QVBoxLayout(panel); l.setContentsMargins(30, 30, 30, 30)
-        t = QLabel("🧬  Genomic Similarity Visualization"); t.setObjectName("panel_title")
-        l.addWidget(t)
-
-        self.ani_gauge = ANIGaugeWidget()
-        l.addWidget(self.ani_gauge)
+        # Left: Image Viewer (Scalable)
+        viewer_panel = QFrame(); viewer_panel.setObjectName("panel_box")
+        vl = QVBoxLayout(viewer_panel); vl.setContentsMargins(10, 10, 10, 10)
+        vl.addWidget(QLabel("🎨 SYNTENY DOTPLOT", objectName="panel_title"))
         
-        info = QLabel("95%+ Identity typically indicates the same bacterial species.")
-        info.setStyleSheet("color: #A3AED0; font-size: 12px; font-style: italic;")
-        info.setAlignment(Qt.AlignCenter)
-        l.addWidget(info)
+        # Scroll Area for large plots
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("border: none;")
         
-        self.layout.addWidget(panel)
-
-    def setup_log_panel(self):
-        panel = QFrame(); panel.setObjectName("panel_box")
-        l = QVBoxLayout(panel); l.setContentsMargins(30, 30, 30, 30)
-        t = QLabel("📝  Pipeline Execution Logs"); t.setObjectName("panel_title")
-        l.addWidget(t)
-
+        self.img_label = QLabel("Run comparison to view Plot"); self.img_label.setObjectName("img_viewer")
+        self.img_label.setAlignment(Qt.AlignCenter)
+        self.img_label.setScaledContents(True) # Allow scaling
+        
+        scroll.setWidget(self.img_label)
+        vl.addWidget(scroll)
+        
+        # Right: Logs
+        log_panel = QFrame(); log_panel.setObjectName("panel_box"); log_panel.setFixedWidth(320)
+        ll = QVBoxLayout(log_panel); ll.setContentsMargins(10, 10, 10, 10)
+        ll.addWidget(QLabel("📝 ANALYSIS LOGS", objectName="panel_title"))
+        
         self.terminal = QTextEdit(); self.terminal.setObjectName("terminal"); self.terminal.setReadOnly(True)
-        self.terminal.setMinimumHeight(300)
-        l.addWidget(self.terminal)
-        self.layout.addWidget(panel)
+        ll.addWidget(self.terminal)
 
-    def create_stat_card(self, title, default, color):
-        card = QFrame(); card.setObjectName("stat_card")
-        l = QVBoxLayout(card); l.setContentsMargins(20, 20, 20, 20)
-        lbl = QLabel(title); lbl.setObjectName("stat_title")
-        val = QLabel(default); val.setObjectName("stat_val"); val.setStyleSheet(f"color: {color};")
-        l.addWidget(lbl); l.addWidget(val)
-        return card, val
+        row.addWidget(viewer_panel, 3) # Give viewer more space (ratio 3:1)
+        row.addWidget(log_panel, 1)
+        layout.addLayout(row)
 
-    def select_files(self):
-        files, _ = QFileDialog.getOpenFileNames(self, "Select Genomes", "", "FASTA Files (*.fasta *.fa *.fna)")
-        if files:
-            for f in files: self.file_list.addItem(f"📄 {f}")
-            self.btn_run.setEnabled(self.file_list.count() >= 2)
+    # --- LOGIC ---
 
-    def log(self, msg):
-        self.terminal.append(f"> {msg}"); self.terminal.verticalScrollBar().setValue(self.terminal.verticalScrollBar().maximum())
+    def select_file(self, ftype):
+        f, _ = QFileDialog.getOpenFileName(self, "Select Genome Fasta", "", "Fasta Files (*.fasta *.fna *.fa *.txt)")
+        if f:
+            name = os.path.basename(f)
+            if ftype == "query":
+                self.query_file = f
+                self.lbl_query.setText(f"📄 {name}")
+                self.lbl_query.setStyleSheet("color: #2B3674; font-weight: 600;")
+            else:
+                self.ref_file = f
+                self.lbl_ref.setText(f"📘 {name}")
+                self.lbl_ref.setStyleSheet("color: #2B3674; font-weight: 600;")
+            
+            # Enable Run if both files selected
+            if self.query_file and self.ref_file:
+                self.btn_run.setEnabled(True)
 
-    def run_process(self):
-        files = [self.file_list.item(i).text().replace("📄 ", "").strip() for i in range(self.file_list.count())]
-        self.terminal.clear(); self.progress.setValue(0); self.btn_run.setEnabled(False)
+    def run_comparison(self):
+        self.terminal.clear(); self.progress.setValue(0)
+        self.btn_run.setEnabled(False)
+        self.img_label.setText("Generating Plot... Please Wait.")
         
-        self.worker = ComparativeWorker(files)
+        # Instantiate the Worker with the two files
+        self.worker = ComparativeWorker(self.query_file, self.ref_file)
+        
+        # Connect Signals
         self.worker.log_signal.connect(self.log)
         self.worker.progress_signal.connect(self.progress.setValue)
+        self.worker.result_signal.connect(self.display_result)
+        self.worker.finished_signal.connect(self.on_finish)
         
-        # Connect signals to match the Comparative Engine keys
-        self.worker.input_stats_signal.connect(lambda d: self.log(f"Comparing Reference: {d.get('ref', 'Unknown')}"))
-        self.worker.stats_signal.connect(self.update_results)
-        
-        self.worker.finished_signal.connect(self.on_finished)
         self.worker.start()
 
-    def update_results(self, data):
-        ani = data.get('ani', 0.0)
-        cov = data.get('coverage', 0.0)
-        self.ani_val.setText(f"{ani}%")
-        self.cov_val.setText(f"{cov}%")
-        self.ani_gauge.update_value(ani)
-
-    def on_finished(self, success, msg):
-        self.btn_run.setEnabled(True)
-        if success:
-            self.log("--- ANALYSIS COMPLETED SUCCESSFULLY ---")
+    def display_result(self, data):
+        """Displays the generated dotplot and final stats."""
+        plot_path = data.get("plot_path")
+        matches = data.get("matches")
+        ref_name = data.get("ref_name")
+        
+        if plot_path and os.path.exists(plot_path):
+            pixmap = QPixmap(plot_path)
+            # Scale simply for fit, high-res is saved to disk
+            self.img_label.setPixmap(pixmap.scaled(self.img_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.log(f"✅ Plot Generated Successfully.")
+            self.log(f"📊 Synteny Matches Found: {matches}")
+            self.log(f"💾 Image saved at: {plot_path}")
         else:
-            self.log(f"❌ ERROR: {msg}")
+            self.img_label.setText("Error loading image")
+            self.log("❌ Failed to load generated plot.")
+
+    def on_finish(self):
+        self.btn_run.setEnabled(True)
+
+    def log(self, msg):
+        self.terminal.append(f"> {msg}")

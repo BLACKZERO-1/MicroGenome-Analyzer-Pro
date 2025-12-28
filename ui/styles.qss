@@ -1,0 +1,166 @@
+/* ======================= Overall Application ======================= */
+QMainWindow {
+    background-color: #1E1E1E;   /* Dark background like Mega */
+    color: #FFFFFF;
+    font-family: "Segoe UI", sans-serif;
+}
+
+/* ======================= Sidebar ======================= */
+#sidebar {
+    background-color: #252526;
+    border-right: 1px solid #3C3C3C;
+    min-width: 220px;
+}
+
+/* Sidebar Buttons */
+QPushButton {
+    background-color: transparent;
+    color: #CCCCCC;
+    border: none;
+    padding: 12px 20px;
+    text-align: left;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 8px;
+}
+
+QPushButton:hover {
+    background-color: #2D2D30;
+    color: #FFFFFF;
+}
+
+QPushButton:checked {
+    background-color: #094771;
+    color: #FFFFFF;
+    border-left: 4px solid #2D8CF0;
+}
+
+/* ======================= Headers & Titles ======================= */
+QLabel#dash_title {
+    color: #FFFFFF;
+    font-size: 28px;
+    font-weight: 900;
+}
+
+QLabel#dash_subtitle {
+    color: #CFCFCF;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+QLabel#section_title {
+    color: #FFFFFF;
+    font-size: 18px;
+    font-weight: 800;
+    margin-bottom: 10px;
+}
+
+QLabel#user_badge {
+    background-color: #2A2A2A;
+    color: #FFFFFF;
+    font-weight: 700;
+    padding: 10px 20px;
+    border-radius: 20px;
+    border: 1px solid #3C3C3C;
+}
+
+/* ======================= Cards / Panels ======================= */
+QFrame#white_card {
+    background-color: #2A2A2A;  /* Dark card background */
+    border-radius: 20px;
+    border: 1px solid #3C3C3C;
+}
+
+QLabel#card_label {
+    color: #CFCFCF;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+QLabel#card_value {
+    color: #2D8CF0;  /* Mega-style accent */
+    font-size: 28px;
+    font-weight: 900;
+}
+
+QLabel#trend_indicator {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 8px;
+}
+
+/* ======================= Tables ======================= */
+QTableWidget {
+    background-color: #2A2A2A;
+    border: none;
+    gridline-color: #3C3C3C;
+    color: #FFFFFF;
+    font-weight: 600;
+}
+
+QTableWidget::item:hover {
+    background-color: #333340;
+}
+
+QHeaderView::section {
+    background-color: #1F1F1F;
+    border: none;
+    color: #FFFFFF;
+    font-weight: 700;
+    padding: 10px;
+}
+
+/* ======================= Progress Bars ======================= */
+QProgressBar {
+    border: 1px solid #3C3C3C;
+    border-radius: 5px;
+    text-align: center;
+    background-color: #2D2D2D;
+    color: #FFFFFF;
+    height: 10px;
+}
+
+QProgressBar::chunk {
+    background-color: #2D8CF0;  /* Mega-style blue */
+    border-radius: 5px;
+}
+
+/* Warning / Critical */
+QProgressBar[warning="true"]::chunk { background-color: #FFAB00; }
+QProgressBar[critical="true"]::chunk { background-color: #FF5B5B; }
+
+/* ======================= Activity Feed ======================= */
+QLabel#activity_item {
+    background-color: #2A2A2A;
+    color: #FFFFFF;
+    padding: 12px 15px;
+    border-radius: 10px;
+    border-left: 4px solid #2D8CF0;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QLabel#activity_time {
+    color: #CFCFCF;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+/* ======================= Quick Action Buttons ======================= */
+QPushButton#action_btn {
+    background-color: #2A2A2A;
+    color: #2D8CF0;
+    border: 2px solid #3C3C3C;
+    border-radius: 15px; 
+    font-weight: 700;
+    font-size: 13px;
+    text-align: left;
+    padding: 20px;
+}
+
+QPushButton#action_btn:hover {
+    background-color: #094771;
+    border: 2px solid #2D8CF0;
+    color: #FFFFFF;
+}

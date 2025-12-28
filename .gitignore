@@ -1,0 +1,13 @@
+Set-Content .gitignore "dist/
+build/
+.venv/
+env/
+__pycache__/
+results/
+logs/
+tools/
+databases/
+*.db
+*.sqlite3
+*.pyc
+*.exe"

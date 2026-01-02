@@ -1,0 +1,38 @@
+LOCUS       LZ986654                  22 bp    DNA     linear   PAT 30-MAR-2018
+DEFINITION  JP 2017225360-A/35: Sequence and usage of probes and primers for
+            serotyping of genus Salmonella.
+ACCESSION   LZ986654
+VERSION     LZ986654.1
+KEYWORDS    JP 2017225360-A/35.
+SOURCE      Salmonella
+  ORGANISM  Salmonella
+            Bacteria; Pseudomonadati; Pseudomonadota; Gammaproteobacteria;
+            Enterobacterales; Enterobacteriaceae.
+REFERENCE   1  (bases 1 to 22)
+  AUTHORS   Kurazono,H. and Yamasaki,E.
+  TITLE     Sequence and usage of probes and primers for serotyping of genus
+            Salmonella
+  JOURNAL   Patent: JP 2017225360-A 35 28-DEC-2017;
+            Obihiro University of Agriculture and Veterinary Medicine
+COMMENT     OS   Salmonella
+            PN   JP 2017225360-A/35
+            PD   28-DEC-2017
+            PF   20-JUN-2016 JP 2016121670
+            PR
+            PA   Obihiro University of Agriculture and Veterinary Medicine
+            PI   hisao kurazono,eiki yamasaki
+            PT   'Sequence and usage of probes and primers for serotyping of
+            PT   genus
+            PT   Salmonella'
+            PS   N35
+            CC
+            FH   Key             Location/Qualifiers.
+FEATURES             Location/Qualifiers
+     source          1..22
+                     /organism="Salmonella"
+                     /mol_type="unassigned DNA"
+                     /db_xref="taxon:590"
+ORIGIN      
+        1 ggtgctgttg gcaacgttac tg
+//
+

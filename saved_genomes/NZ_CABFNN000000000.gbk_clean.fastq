@@ -1,0 +1,60 @@
+LOCUS       NZ_CABFNN010000000   4955275 bp    DNA     linear   BCT 29-JUN-2025
+DEFINITION  Escherich
+            sequencing project.
+ACCESSION   NZ_CABFNN
+VERSION     NZ_CABFNN000000000.1
+DBLINK      BioProject:
+            BioSample: SAMEA5663216
+Assembly: GCF_902006485
+KEYWORDS    WGS; RefSeq.
+SOURCE      Escherichia coli J53
+  ORGANISM  Escherichia coli J53
+Bacteria; Pseudomonadati; Pseudomonadota; Gammaproteobacteria;
+            Enterobacterales; Enterobacteriaceae; Escherichia.
+REFERENCE   1
+  AUTHORS   Landraud,L.
+TITLE     Direct Submission
+            The Escherichia coli J53 whole genome shotgun (WGS) project has the
+project accession NZ_CABFNN00000
+            (01) has the accession number NZ_CABFNN010000000, and consists of
+sequences CABFNN010000001-CABFNN
+            
+##Genome-Annotation-Data-START##
+            Annotation Provider               :: NCBI RefSeq
+Annotation Name                   :: GCF_902006485.1-RS_2025_06_29
+            Annotation Date                   :: 06/29/2025 10:31:29
+Annotation Pipeline               :: NCBI Prokaryotic Genome
+                                                 Annotation Pipeline (PGAP)
+Annotation Method                 :: Best-placed reference protein
+                                                 set; GeneMarkS-2+
+Annotation Software revision      :: 6.1
+            Features Annotated                :: Gene; CDS; rRNA; tRNA; ncRNA
+Genes (total)                     :: 4,9
+            CDSs (total)                      :: 4,791
+Genes (coding)                    ::
+            CDSs (with protein)               :: 4,504
+Genes (RNA)                       ::
+            rRNAs                             :: 8, 7, 7 (5S, 16S, 23S)
+complete rRNAs                    :: 8,
+            tRNAs                             :: 84
+ncRNAs                            :: 15
+            Pseudo Genes (total)              :: 287
+CDSs (without protein)            :: 287
+            Pseudo Genes (ambiguous residues) :: 0 of 287
+Pseudo Genes (frameshifted)       :: 135 of 287
+            Pseudo Genes (incomplete)         :: 164 of 287
+Pseudo Genes (internal stop)      ::
+            Pseudo Genes (multiple problems)  :: 43 of 287
+CRISPR Arrays                     ::
+            ##Genome-Annotation-Data-END##
+FEATURES             Location/
+     source          1..4955275
+/organism="Escherichia coli J5
+                     /mol_type="genomic DNA"
+/isolate="E. coli"
+                     /isolation_source="Bacterial culture"
+/host="Escherichia coli
+                     /db_xref="taxon:1144303"
+/geo_loc_name="France"
+                     /collection_date="2018"
+WGS         CABFNN010000001-CABFNN

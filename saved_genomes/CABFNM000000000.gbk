@@ -1,0 +1,31 @@
+LOCUS       CABFNM010000000            2 rc    DNA     linear   BCT 12-JUN-2019
+DEFINITION  Escherichia coli J53 isolate E. coli, whole genome shotgun
+            sequencing project.
+ACCESSION   CABFNM000000000
+VERSION     CABFNM000000000.1
+DBLINK      BioProject: PRJEB32706
+            BioSample: SAMEA5663232
+KEYWORDS    WGS.
+SOURCE      Escherichia coli J53
+  ORGANISM  Escherichia coli J53
+            Bacteria; Pseudomonadati; Pseudomonadota; Gammaproteobacteria;
+            Enterobacterales; Enterobacteriaceae; Escherichia.
+REFERENCE   1
+  AUTHORS   Landraud,L.
+  TITLE     Direct Submission
+  JOURNAL   Submitted (07-JUN-2019) INSERM, IAME, UMR 1137, Rue Henri Huchard
+            75018 Paris, France
+COMMENT     The Escherichia coli J53 whole genome shotgun (WGS) project has the
+            project accession CABFNM000000000.  This version of the project
+            (01) has the accession number CABFNM010000000, and consists of
+            sequences CABFNM010000001-CABFNM010000002.
+FEATURES             Location/Qualifiers
+     source          1..2
+                     /organism="Escherichia coli J53"
+                     /mol_type="genomic DNA"
+                     /isolate="E. coli"
+                     /isolation_source="Bacterial culture"
+                     /db_xref="taxon:1144303"
+WGS         CABFNM010000001-CABFNM010000002
+//
+
